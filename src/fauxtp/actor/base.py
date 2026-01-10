@@ -20,6 +20,10 @@ class ActorHandle:
     pid: PID
     cancel_scope: anyio.CancelScope
 
+class ActorExit(BaseException):
+    def __init__(self, reason: str = "normal"):
+        super().__init__(reason)
+        self.reason = reason
 
 class Actor(ABC):
     """
@@ -35,6 +39,7 @@ class Actor(ABC):
         self._mailbox: Mailbox | None = None
         self._state: Any = None
         self._task_group: TaskGroup | None = None
+        self._cancel_scope: anyio.CancelScope | None = None
 
     @property
     def pid(self) -> PID:
@@ -92,50 +97,54 @@ class Actor(ABC):
         actor._task_group = task_group
         actor._mailbox = Mailbox()
         actor._pid = PID(_id=uuid.uuid4(), _mailbox=actor._mailbox)
+        actor._cancel_scope = anyio.CancelScope()
 
-        cancel_scope = anyio.CancelScope()
         cancelled_exc = anyio.get_cancelled_exc_class()
 
         async def _actor_loop() -> None:
             """Main actor execution loop."""
             state: Any = None
             reason = "normal"
-            with cancel_scope:
+            with actor._cancel_scope:  # pyright: ignore[reportOptionalContextManager]
                 try:
                     state = await actor.init()
                     actor._state = state
                     while True:
                         state = await actor.run(state)
                         actor._state = state
+
+                except ActorExit as e:
+                    reason = e.reason
+
                 except cancelled_exc:
                     reason = "cancelled"
-                    raise
+
                 except Exception as e:
                     reason = f"error: {e!r}"
-                    try:
-                        await actor.terminate(reason, state)
-                    finally:
-                        # Do not re-raise: keep failures isolated from the parent TaskGroup.
-                        pass
-                else:
-                    # run() loops should not return, but if it ever does, treat as normal exit.
-                    try:
-                        await actor.terminate(reason, state)
-                    finally:
-                        pass
+
                 finally:
-                    if on_exit is not None and actor._pid is not None:
-                        # Best-effort exit notification; never crash the task group.
+                    with anyio.CancelScope(shield=True):
                         try:
-                            await on_exit(actor._pid, reason)
-                        except Exception:
+                            # Always run actor cleanup
+                                await actor.terminate(reason, state)
+                        finally:
                             pass
+                        if on_exit is not None and actor._pid is not None:
+                            # Best-effort exit notification; never crash the task group.
+                            try:
+                                    await on_exit(actor._pid, reason)
+                            except Exception:
+                                pass
 
         task_group.start_soon(_actor_loop)
-        return ActorHandle(pid=actor._pid, cancel_scope=cancel_scope)
+        return ActorHandle(pid=actor._pid, cancel_scope=actor._cancel_scope)
 
     @classmethod
     async def start(cls, *args, task_group: TaskGroup, **kwargs) -> PID:
         """Start this actor inside the given AnyIO TaskGroup and return its PID."""
         handle = await cls.start_link(*args, task_group=task_group, **kwargs)
         return handle.pid
+
+    def stop(self, reason: str = "normal"):
+        """Manually exits the actor with a given reason."""
+        raise ActorExit(reason)
