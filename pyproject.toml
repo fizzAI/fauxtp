@@ -1,0 +1,23 @@
+[project]
+name = "fauxtp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "fizzAI", email = "fizzarolli@riseup.net" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "anyio>=4.12.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
