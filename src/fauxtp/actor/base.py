@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from re import U
 from typing import Any, Awaitable, Callable
 
 import anyio
@@ -40,6 +41,12 @@ class Actor(ABC):
         self._state: Any = None
         self._task_group: TaskGroup | None = None
         self._cancel_scope: anyio.CancelScope | None = None
+        self._children_tg: TaskGroup | None = None
+
+    @property
+    def children(self) -> TaskGroup:
+        """A TaskGroup owned by this actor and is cancelled when the actor exits. Only available after .start_link finishes init""" 
+        return self._children_tg   # pyright: ignore[reportReturnType]
 
     @property
     def pid(self) -> PID:
@@ -103,38 +110,40 @@ class Actor(ABC):
 
         async def _actor_loop() -> None:
             """Main actor execution loop."""
-            state: Any = None
-            reason = "normal"
-            with actor._cancel_scope:  # pyright: ignore[reportOptionalContextManager]
-                try:
-                    state = await actor.init()
-                    actor._state = state
-                    while True:
-                        state = await actor.run(state)
+            async with anyio.create_task_group() as child_tg:
+                actor._children_tg = child_tg
+                state: Any = None
+                reason = "normal"
+                with actor._cancel_scope:  # pyright: ignore[reportOptionalContextManager]
+                    try:
+                        state = await actor.init()
                         actor._state = state
+                        while True:
+                            state = await actor.run(state)
+                            actor._state = state
 
-                except ActorExit as e:
-                    reason = e.reason
+                    except ActorExit as e:
+                        reason = e.reason
 
-                except cancelled_exc:
-                    reason = "cancelled"
+                    except cancelled_exc:
+                        reason = "cancelled"
 
-                except Exception as e:
-                    reason = f"error: {e!r}"
+                    except Exception as e:
+                        reason = f"error: {e!r}"
 
-                finally:
-                    with anyio.CancelScope(shield=True):
-                        try:
-                            # Always run actor cleanup
-                                await actor.terminate(reason, state)
-                        finally:
-                            pass
-                        if on_exit is not None and actor._pid is not None:
-                            # Best-effort exit notification; never crash the task group.
+                    finally:
+                        with anyio.CancelScope(shield=True):
                             try:
-                                    await on_exit(actor._pid, reason)
-                            except Exception:
+                                # Always run actor cleanup
+                                    await actor.terminate(reason, state)
+                            finally:
                                 pass
+                            if on_exit is not None and actor._pid is not None:
+                                # Best-effort exit notification; never crash the task group.
+                                try:
+                                        await on_exit(actor._pid, reason)
+                                except Exception:
+                                    pass
 
         task_group.start_soon(_actor_loop)
         return ActorHandle(pid=actor._pid, cancel_scope=actor._cancel_scope)
@@ -148,3 +157,15 @@ class Actor(ABC):
     def stop(self, reason: str = "normal"):
         """Manually exits the actor with a given reason."""
         raise ActorExit(reason)
+    
+    def start_soon_child(self, fn, *args, name: str | None = None):
+        self.children.start_soon(fn, *args, name=name)
+
+    async def spawn_child_actor(
+        self,
+        actor_cls: type["Actor"],
+        *args,
+        on_exit=None,
+        **kwargs,
+    ) -> ActorHandle:
+        return await actor_cls.start_link(*args, task_group=self.children, on_exit=on_exit, **kwargs)
