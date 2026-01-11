@@ -1,6 +1,6 @@
 [project]
 name = "fauxtp"
-version = "0.1.0.dev1"
+version = "0.1.0.post1"
 description = "Erlang/OTP primitives for Python."
 license = "BSD-2-Clause"
 readme = "README.md"
