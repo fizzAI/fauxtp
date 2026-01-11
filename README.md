@@ -28,7 +28,7 @@ uv run pytest -q
 ## The Gist
 
 > Note: actors are started **inside an AnyIO TaskGroup** (structured concurrency).
-> You must pass `task_group=...` to [`python.Actor.start()`](src/fauxtp/actor/base.py:137).
+> You must pass `task_group=...` to [`python.Actor.start()`](src/fauxtp/actor/base.py#L137).
 
 ### GenServer
 
@@ -93,3 +93,18 @@ class App(Supervisor):
 ## Why?
 
 Async Python often devolves into a mess of unmanaged tasks and race conditions. OTP solved this decades ago with structured concurrency trees. We're just borrowing their homework.
+
+## Recommendations for more Elixir-like Python
+
+The `fauxtp` code only requires `anyio` as a dependency, and that will remain true. However, if you want to have even more Elixir shenanigans, we can make the following recommendations:
+
+- Treat server state as a value.
+  - Do not mutate the incoming state in-place, always return a new state.
+  - While this isn't *required* (Python is pass by reference, so any mutated state should apply to the overall state), we make no guarantees as to whether or not things will break.
+
+- Prefer forcibly immutable/persistent state containers.
+  - Avoid Python stdlib mutable collections (`list`, `dict`, `set`, most `collections.*`), except for tuples (and other immutables).
+  - Consider [`rpds-py`](https://pypi.org/project/rpds-py/) or [`pyrsistent`](https://pypi.org/project/pyrsistent/) for persistent vectors/maps/sets.
+
+- Avoid using `typing.Any` in user code where possible.
+  - While we have to use it internally to avoid exploding errors (and some of this may leak to the more publicly aimed APIs), we highly recommend using `Generic[T]` where needed, as our `GenServer` does to specify its request and state types.
