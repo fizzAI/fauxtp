@@ -75,20 +75,18 @@ class Supervisor(Actor):
         )
     
     async def _start_child(self, spec: ChildSpec) -> dict[str, Any]:
-        """Start a single child actor in the supervisor's TaskGroup."""
-        if self._task_group is None:
-            raise RuntimeError(
-                "Supervisor has no task group; start it with Actor.start(task_group=...)"
-            )
-
+        """Start a single child actor using this actor's child TaskGroup."""
         async def _on_exit(pid: PID, reason: str) -> None:
             # Best-effort notification to supervisor mailbox.
             if self._mailbox is not None:
                 await self._mailbox.put(("$child_down", spec.id, pid, reason))
 
-        handle: ActorHandle = await spec.actor_class.start_link(
+        # Use the Actor-provided child supervision/task-group mechanism so that:
+        # - children are cancelled when the supervisor exits
+        # - child failures don't crash the supervisor's task group (OTP-style)
+        handle: ActorHandle = await self.spawn_child_actor(
+            spec.actor_class,
             *spec.args,
-            task_group=self._task_group,
             on_exit=_on_exit,
             **spec.kwargs,
         )
