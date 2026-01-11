@@ -55,10 +55,13 @@ async def wait_for(condition: Callable[[], bool], timeout: float = 1.0, interval
 class TestActor(Actor):
     """
     A simple test actor that collects messages.
-    
+
     Useful for testing message flows.
     """
-    
+
+    # Prevent pytest from trying to collect this as a test class when imported in tests.
+    __test__ = False
+
     def __init__(self):
         super().__init__()
         self.messages: list[Any] = []
