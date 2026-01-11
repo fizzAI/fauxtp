@@ -7,6 +7,9 @@ from src.fauxtp.primitives.mailbox import Mailbox, ReceiveTimeout
 from src.fauxtp.primitives.pattern import ANY, IGNORE, match_pattern
 
 
+pytestmark = pytest.mark.anyio
+
+
 class TestPID:
     """Test PID functionality."""
     

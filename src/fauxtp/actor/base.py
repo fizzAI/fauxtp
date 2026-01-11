@@ -112,7 +112,9 @@ class Actor(ABC):
         - Actor exceptions are caught and reported via on_exit; they do not crash the
           parent TaskGroup (OTP-style "let it crash" with supervision).
         """
-        actor = cls()
+        # NOTE: for this framework, constructor arguments are passed to __init__().
+        # init() is reserved for async initialization after the PID/mailbox exist.
+        actor = cls(*args, **kwargs)
         actor._task_group = task_group
         actor._mailbox = Mailbox()
         actor._pid = PID(_id=uuid.uuid4(), _mailbox=actor._mailbox)
@@ -128,7 +130,7 @@ class Actor(ABC):
                 reason = "normal"
                 with actor._cancel_scope:  # pyright: ignore[reportOptionalContextManager]
                     try:
-                        state = await actor.init(*args, **kwargs)
+                        state = await actor.init()
                         actor._state = state
                         while True:
                             state = await actor.run(state)
@@ -147,13 +149,13 @@ class Actor(ABC):
                         with anyio.CancelScope(shield=True):
                             try:
                                 # Always run actor cleanup
-                                    await actor.terminate(reason, state)
+                                await actor.terminate(reason, state)
                             finally:
                                 pass
                             if on_exit is not None and actor._pid is not None:
                                 # Best-effort exit notification; never crash the task group.
                                 try:
-                                        await on_exit(actor._pid, reason)
+                                    await on_exit(actor._pid, reason)
                                 except Exception:
                                     pass
 

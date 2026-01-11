@@ -25,6 +25,15 @@ class TaskHandle:
     def __init__(self, handle: ActorHandle):
         self._handle = handle
 
+    @property
+    def pid(self) -> PID:
+        """PID of the underlying Task actor."""
+        return self._handle.pid
+
+    def cancel(self) -> None:
+        """Cancel the underlying Task actor."""
+        self._handle.cancel_scope.cancel()
+
     async def join(self) -> Any:
         """
         Wait for Task completion and return its value, or raise on failure.

@@ -8,8 +8,11 @@ Base actor class. Subclass and implement `run()`.
 
 ### Methods
 
-#### `async init(self, *args, **kwargs) -> Any`
-Initialize actor state. Returns initial state. Override this to set up your actor.
+#### `async init(self) -> Any`
+Initialize actor state (async). Returns initial state.
+
+Constructor args passed to [`Actor.start()`](docs/api/actor.md:23) / [`Actor.start_link()`](docs/api/actor.md:26)
+go to `__init__()`, not to `init()`.
 
 #### `abstract async run(self, state: Any) -> Any`
 Main actor loop body. Called repeatedly. Should await `receive()` and handle messages. Returns new state.
@@ -23,8 +26,12 @@ Receive from this actor's mailbox. Each pattern is a `(matcher, handler)` tuple.
 #### `classmethod async start(cls, *args, task_group: TaskGroup, **kwargs) -> PID`
 Start this actor inside the given AnyIO TaskGroup and return its PID.
 
+`*args` / `**kwargs` are passed to the actor's constructor (`__init__`).
+
 #### `classmethod async start_link(cls, *args, task_group: TaskGroup, on_exit: Callable[[PID, str], Awaitable[None]] | None = None, **kwargs) -> ActorHandle`
 Start this actor inside the given AnyIO TaskGroup. Returns an `ActorHandle`.
+
+`*args` / `**kwargs` are passed to the actor's constructor (`__init__`).
 
 #### `def stop(self, reason: str = "normal")`
 Manually exits the actor with a given reason.
@@ -83,3 +90,9 @@ Wrapper around `ActorHandle` for Tasks.
 
 #### `async join(self) -> Any`
 Wait for Task completion and return its value, or raise on failure.
+
+#### `pid: PID`
+PID of the underlying Task.
+
+#### `cancel() -> None`
+Cancel the underlying Task.
