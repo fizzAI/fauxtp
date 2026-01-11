@@ -1,6 +1,6 @@
 [project]
 name = "fauxtp"
-version = "0.1.0"
+version = "0.1.0.dev1"
 description = "Erlang/OTP primitives for Python."
 license = "BSD-2-Clause"
 readme = "README.md"
@@ -11,6 +11,10 @@ requires-python = ">=3.11"
 dependencies = [
     "anyio>=4.12.1",
 ]
+
+[project.urls]
+Documentation = "https://fizzai.github.io/fauxtp/"
+Repository = "https://github.com/fizzAI/fauxtp"
 
 [project.optional-dependencies]
 dev = [
