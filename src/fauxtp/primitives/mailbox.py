@@ -32,7 +32,9 @@ class Mailbox:
         timeout: float | None = None,
     ) -> T:
         """
-        Receive a message matching one of the patterns.
+        For internal use only.
+
+        Receive a message matching one of the patterns from this mailbox.
 
         Each pattern is a (matcher, handler) tuple.
         Matcher can be:

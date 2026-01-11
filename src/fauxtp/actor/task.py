@@ -5,18 +5,22 @@ Does not provide any methods for passing messages to it, use an Actor if you nee
 Useful if you want to spin off long-running work without blocking a main actors mailbox.
 """
 from typing import Any
+from anyio.abc import TaskGroup
+from typing_extensions import override
 
 from .base import Actor, ActorHandle
 from ..messaging import send
-from ..primitives.pid import PID, Ref
+from ..primitives.pid import PID
 from ..primitives.pattern import ANY
+
+from ..type_utils import typed_lambda, MaybeAwaitableCallable
 
 class TaskHandle:
     """
     Special wrapper around an ActorHandle that provides nice utility functions for dealing with Tasks.
     """
 
-    _handle = ActorHandle
+    _handle: ActorHandle
 
     def __init__(self, handle: ActorHandle):
         self._handle = handle
@@ -30,24 +34,22 @@ class TaskHandle:
         def _raise(ex: BaseException) -> "Any":
             raise ex
 
-        # Prefer a public PID.receive(...) if you add one;
-        # this reaches into internals like your original draft did.
-        return await pid._mailbox.receive(
-            (("$success", ANY), lambda res: res),
-            (("$failure", ANY), lambda reason: _raise(RuntimeError(reason))),
+        return await pid._mailbox.receive(  # pyright: ignore[reportPrivateUsage]
+            (("$success", ANY), typed_lambda[Any](lambda res: res)),
+            (("$failure", ANY), typed_lambda[str](lambda reason: _raise(RuntimeError(reason)))),
         )
 
 
 class Task(Actor):
     def __init__(
         self,
-        func,
-        notify_pid=None,
-        success_message_name="$$success",
-        failure_message_name="$$failure"
+        func: MaybeAwaitableCallable,
+        notify_pid: PID | None = None,
+        success_message_name: str = "$$success",
+        failure_message_name: str = "$$failure"
     ):
         super().__init__()
-        self._func = func
+        self._func: MaybeAwaitableCallable = func
         self._notify_pid: PID | None = notify_pid
         self._success_message_name: str = success_message_name
         self._failure_message_name: str = failure_message_name
@@ -67,6 +69,7 @@ class Task(Actor):
                 return
         self._sent_notify = True
 
+    @override
     async def run(self, state: Any) -> Any:
         try:
             res = await self._func()
@@ -76,6 +79,7 @@ class Task(Actor):
             await self.notify("failure", repr(e))
             self.stop("error")
 
+    @override
     async def terminate(self, reason: str, state: Any) -> None:
         # If we were cancelled before run() could report, unblock join()
         if not self._sent_notify:
@@ -84,18 +88,18 @@ class Task(Actor):
 
     # Special Task functions
     @classmethod
-    async def spawn(cls, func, task_group):
+    async def spawn(cls, func: MaybeAwaitableCallable, task_group: TaskGroup):
         handle = await cls.start_link(func, task_group=task_group)
         return TaskHandle(handle)
    
     @classmethod
     async def spawn_and_notify(
         cls,
-        func,
-        task_group,
-        parent_pid,
-        success_message_name="$$success",
-        failure_message_name="$$failure",
+        func: MaybeAwaitableCallable,
+        task_group: TaskGroup,
+        parent_pid: PID,
+        success_message_name: str = "$$success",
+        failure_message_name: str = "$$failure",
     ):
         handle = await cls.start_link(
             func,

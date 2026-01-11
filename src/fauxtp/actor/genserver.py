@@ -4,7 +4,9 @@ GenServer - Generic Server pattern.
 Provides structured request/reply (call) and fire-and-forget (cast).
 """
 
+import functools
 from typing import Any
+from typing_extensions import override
 
 from .base import Actor
 from ..messaging import send
@@ -22,20 +24,21 @@ class GenServer(Actor):
       - handle_info(message, state) → new_state
     """
     
+    @override
     async def run(self, state: Any) -> Any:
         """Main GenServer loop - dispatches to handle_* methods."""
         return await self.receive(
             # call: ($call, ref, from_pid, request)
-            ((("$call", Ref, PID, ANY), 
-              lambda ref, from_pid, req: self._do_call(ref, from_pid, req, state))),
+            (("$call", Ref, PID, ANY), 
+              functools.partial(self._do_call, state=state)),
             
             # cast: ($cast, request)  
-            ((("$cast", ANY),
-              lambda req: self._do_cast(req, state))),
+            (("$cast", ANY),
+              functools.partial(self._do_cast, state=state)),
             
             # anything else is info
-            ((ANY, 
-              lambda msg: self._do_info(msg, state))),
+            (ANY, 
+              functools.partial(self._do_info, state=state)),
         )
     
     async def _do_call(self, ref: Ref, from_pid: PID, request: Any, state: Any) -> Any:
@@ -54,7 +57,7 @@ class GenServer(Actor):
     
     # --- Override these ---
     
-    async def handle_call(self, request: Any, from_ref: Ref, state: Any) -> tuple[Any, Any]:
+    async def handle_call(self, request: Any, from_ref: Ref, state: Any) -> tuple[Any, Any]:  # pyright: ignore[reportUnusedParameter]
         """
         Handle synchronous request. Returns (reply, new_state).
         
@@ -62,7 +65,7 @@ class GenServer(Actor):
         """
         raise NotImplementedError(f"{self.__class__.__name__}.handle_call/3 not implemented")
     
-    async def handle_cast(self, request: Any, state: Any) -> Any:
+    async def handle_cast(self, request: Any, state: Any) -> Any:  # pyright: ignore[reportUnusedParameter]
         """
         Handle async request. Returns new_state.
         
@@ -70,7 +73,7 @@ class GenServer(Actor):
         """
         return state
     
-    async def handle_info(self, message: Any, state: Any) -> Any:
+    async def handle_info(self, message: Any, state: Any) -> Any:  # pyright: ignore[reportUnusedParameter]
         """
         Handle other messages. Returns new_state.
         

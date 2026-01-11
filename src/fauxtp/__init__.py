@@ -9,7 +9,6 @@ from .supervisor.child_spec import ChildSpec, RestartType, RestartStrategy
 from .supervisor.base import Supervisor, MaxRestartsExceeded
 from .registry.local import register, unregister, whereis, registered, Registry
 from .messaging import send, call, cast
-from .http import HttpRequest, HttpResponse, HttpRouter, HttpServer
 
 __all__ = [
     # Core primitives
@@ -38,9 +37,4 @@ __all__ = [
     "send",
     "call",
     "cast",
-    # HTTP
-    "HttpRequest",
-    "HttpResponse",
-    "HttpRouter",
-    "HttpServer",
 ]

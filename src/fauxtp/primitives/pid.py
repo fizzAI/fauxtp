@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+from typing_extensions import override
 import uuid
 
 if TYPE_CHECKING:
@@ -16,6 +17,7 @@ class PID:
     _id: uuid.UUID
     _mailbox: Mailbox  # Internal, not for direct use
 
+    @override
     def __hash__(self):
         return hash(self._id)
 

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from re import U
-from typing import Any, Awaitable, Callable
+from typing import Any, Callable
+from collections.abc import Awaitable
 
 import anyio
 from anyio.abc import TaskGroup
@@ -14,6 +14,7 @@ import uuid
 from ..primitives.pid import PID
 from ..primitives.mailbox import Mailbox
 
+from ..type_utils import MaybeAwaitableCallable
 
 @dataclass(frozen=True, slots=True)
 class ActorHandle:
@@ -24,7 +25,7 @@ class ActorHandle:
 class ActorExit(BaseException):
     def __init__(self, reason: str = "normal"):
         super().__init__(reason)
-        self.reason = reason
+        self.reason: str = reason
 
 class Actor(ABC):
     """
@@ -54,8 +55,19 @@ class Actor(ABC):
             raise RuntimeError("Actor not started")
         return self._pid
 
-    async def receive(self, *patterns, timeout=None):
-        """Receive from this actor's mailbox."""
+    async def receive(self, *patterns: tuple[Any, MaybeAwaitableCallable], timeout: float | None=None):
+        """
+        Receive from this actor's mailbox.
+
+        Each pattern is a (matcher, handler) tuple.
+        Matcher can be:
+          - A type: matches isinstance
+          - A tuple: matches structure like ("tag", ANY, str)
+          - A callable: matches if returns truthy
+          - ANY: matches everything
+
+        Handler receives extracted values and returns result.
+        """
         if self._mailbox is None:
             raise RuntimeError("Actor not started")
         return await self._mailbox.receive(*patterns, timeout=timeout)
@@ -75,7 +87,7 @@ class Actor(ABC):
         """
         ...
 
-    async def terminate(self, reason: str, state: Any) -> None:
+    async def terminate(self, reason: str, state: Any) -> None:  # pyright: ignore[reportUnusedParameter] these are abstract
         """Cleanup when actor stops."""
         pass
 
@@ -84,10 +96,10 @@ class Actor(ABC):
     @classmethod
     async def start_link(
         cls,
-        *args,
+        *args: Any,
         task_group: TaskGroup,
         on_exit: Callable[[PID, str], Awaitable[None]] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> ActorHandle:
         """
         Start this actor inside the given AnyIO TaskGroup.
@@ -149,7 +161,7 @@ class Actor(ABC):
         return ActorHandle(pid=actor._pid, cancel_scope=actor._cancel_scope)
 
     @classmethod
-    async def start(cls, *args, task_group: TaskGroup, **kwargs) -> PID:
+    async def start(cls, *args: Any, task_group: TaskGroup, **kwargs: Any) -> PID:
         """Start this actor inside the given AnyIO TaskGroup and return its PID."""
         handle = await cls.start_link(*args, task_group=task_group, **kwargs)
         return handle.pid
@@ -158,14 +170,14 @@ class Actor(ABC):
         """Manually exits the actor with a given reason."""
         raise ActorExit(reason)
     
-    def start_soon_child(self, fn, *args, name: str | None = None):
+    def start_soon_child(self, fn: MaybeAwaitableCallable, *args: Any, name: str | None = None):
         self.children.start_soon(fn, *args, name=name)
 
     async def spawn_child_actor(
         self,
         actor_cls: type["Actor"],
-        *args,
-        on_exit=None,
-        **kwargs,
+        *args: Any,
+        on_exit: MaybeAwaitableCallable | None = None,
+        **kwargs: Any,
     ) -> ActorHandle:
         return await actor_cls.start_link(*args, task_group=self.children, on_exit=on_exit, **kwargs)
