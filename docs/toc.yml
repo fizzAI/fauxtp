@@ -1,0 +1,19 @@
+version: 1
+project:
+  toc:
+    - title: Introduction
+      file: docs/index.md
+    - title: Guides
+      children:
+        - file: docs/guides/actors.md
+        - file: docs/guides/genserver.md
+        - file: docs/guides/supervisors.md
+    - title: API Reference
+      children:
+        - file: docs/api/actor.md
+        - file: docs/api/genserver.md
+        - file: docs/api/primitives.md
+        - file: docs/api/supervisor.md
+        - file: docs/api/testing.md
+    - title: Examples
+      file: docs/examples.md

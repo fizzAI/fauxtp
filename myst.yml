@@ -1,0 +1,17 @@
+# See docs at: https://mystmd.org/guide/frontmatter
+version: 1
+project:
+  id: 18a0584a-7931-45af-aa4d-266277cc2b53
+  title: fauxtp
+  description: Erlang/OTP primitives for Python.
+  # keywords: []
+  # authors: []
+  github: https://github.com/fizzAI/fauxtp
+  # To autogenerate a Table of Contents, run "jupyter book init --write-toc"
+extends: docs/toc.yml
+site:
+  template: book-theme
+  options:
+    logo_text: fauxtp
+  #   favicon: favicon.ico
+  #   logo: site_logo.png

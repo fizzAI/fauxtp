@@ -1,4 +1,4 @@
-# GenServer
+# GenServers
 
 `GenServer` (Generic Server) is a behavior module for implementing the server of a client-server relation. It abstracts away the common patterns of state management and message handling.
 

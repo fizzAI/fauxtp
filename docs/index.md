@@ -13,22 +13,10 @@ It is not fast. It is not the BEAM. It is, however, a way to write concurrent Py
 ## Install
 
 ```bash
-# Still baking. Clone it for now.
-git clone https://github.com/fizzAI/fauxtp
-cd fauxtp
-
-# Recommended (uses uv.lock):
-uv sync
-uv run pytest -q
-
-# Or editable install:
-# pip install -e .
+uv add fauxtp
 ```
 
 ## The Gist
-
-> Note: actors are started **inside an AnyIO TaskGroup** (structured concurrency).
-> You must pass `task_group=...` to `Actor.start()`.
 
 ### GenServer
 
