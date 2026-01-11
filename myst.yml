@@ -13,5 +13,8 @@ site:
   template: book-theme
   options:
     logo_text: fauxtp
+  actions:
+    - title: Github
+      url: https://github.org/fizzAI/fauxtp
   #   favicon: favicon.ico
   #   logo: site_logo.png
