@@ -1,7 +1,8 @@
 [project]
 name = "fauxtp"
 version = "0.1.0"
-description = "Add your description here"
+description = "Erlang/OTP primitives for Python."
+license = "BSD-2-Clause"
 readme = "README.md"
 authors = [
     { name = "fizzAI", email = "fizzarolli@riseup.net" }
