@@ -6,7 +6,9 @@ It brings `GenServer`, `Supervisor`, and pattern-matched message passing to Pyth
 
 It is not fast. It is not the BEAM. It is, however, a way to write concurrent Python that doesn't make you want to quit programming.
 
-## Warning: Most of this project has been vibe-coded. I have mostly verified it is accurate, and it works great for what I want it for, but it may be secretly broken and I might not know. Be warned.
+## Creation
+
+**Most of this project was initially vibecoded.** However at this point I've had to put my grubby little mitts on it enough that I'm pretty confident that what it's doing is correct, and if it isn't then it's my fault too.
 
 ## Install
 
