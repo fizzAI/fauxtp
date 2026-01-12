@@ -68,6 +68,8 @@ class Worker(GenServer):
         super().__init__()
         self.worker_id = worker_id
         self.queue_pid = queue_pid
+        # Limit to 2 concurrent tasks per worker
+        self.set_max_tasks(2)
     
     async def init(self):
         print(f"[Worker-{self.worker_id}] Starting")
@@ -75,34 +77,49 @@ class Worker(GenServer):
             "id": self.worker_id,
             "queue": self.queue_pid,
             "processed": 0,
-            "running": True
+            "running": True,
+            "active_tasks": {} # task_id -> pid
         }
     
     async def handle_cast(self, request, state):
         match request:
             case "work":
-                while state["running"]:
-                    # Get task from queue
-                    task = await call(state["queue"], ("dequeue",), timeout=1.0)
-                    
-                    if not task:
-                        await anyio.sleep(0.1)
-                        continue
-                    
-                    # Process task
-                    print(f"[Worker-{state['id']}] Processing task {task['id']}")
-                    try:
-                        await self._process_task(task)
-                        await cast(state["queue"], ("complete", task["id"], "success"))
-                        state["processed"] += 1
-                    except Exception as e:
-                        await cast(state["queue"], ("fail", task["id"], str(e)))
-                    
-                    await anyio.sleep(0.1)
+                if not state["running"]:
+                    return state
+
+                # Get task from queue
+                task = await call(state["queue"], ("dequeue",), timeout=1.0)
+                
+                if task:
+                    # Process task in background using the new Task system
+                    print(f"[Worker-{state['id']}] Spawning task {task['id']}")
+                    pid = await self.spawn_task(self._process_task, task)
+                    if pid:
+                        state["active_tasks"][pid] = task["id"]
+                    else:
+                        # Re-enqueue if we hit the limit (simplified)
+                        await cast(state["queue"], ("enqueue", task))
+                
+                # Schedule next check
+                await cast(self.pid, "work")
+                await anyio.sleep(0.1)
             
             case "stop":
                 state["running"] = False
         
+        return state
+
+    async def handle_task_end(self, pid, result, state):
+        task_id = state["active_tasks"].pop(pid, "unknown")
+        
+        if result["status"] == "ok":
+            print(f"[Worker-{state['id']}] Task {task_id} finished successfully")
+            await cast(state["queue"], ("complete", task_id, result["value"]))
+            state["processed"] += 1
+        else:
+            print(f"[Worker-{state['id']}] Task {task_id} failed: {result['value']}")
+            await cast(state["queue"], ("fail", task_id, result["value"]))
+            
         return state
     
     async def _process_task(self, task):

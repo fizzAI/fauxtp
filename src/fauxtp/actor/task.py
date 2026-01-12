@@ -89,7 +89,7 @@ class Task(Actor):
     # Special Task functions
     @classmethod
     async def spawn(cls, func: MaybeAwaitableCallable, task_group: TaskGroup):
-        handle = await cls.start_link(func, task_group=task_group)
+        handle = await cls.start_link(task_group=task_group, func=func)
         return TaskHandle(handle)
    
     @classmethod
@@ -102,8 +102,8 @@ class Task(Actor):
         failure_message_name: str = "$$failure",
     ):
         handle = await cls.start_link(
-            func,
             task_group=task_group,
+            func=func,
             notify_pid=parent_pid,
             success_message_name=success_message_name,
             failure_message_name=failure_message_name,
