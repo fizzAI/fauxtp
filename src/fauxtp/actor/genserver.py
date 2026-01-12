@@ -5,8 +5,10 @@ Provides structured request/reply (call) and fire-and-forget (cast).
 """
 
 import functools
-from typing import Any, Generic, Set
+from typing import Any, Generic
 from typing_extensions import override, TypeVar
+
+from fauxtp.type_utils import MaybeAwaitableCallable
 
 from .base import Actor
 from .task import Task
@@ -29,15 +31,6 @@ class GenServer(Actor, Generic[R,S]):
       - handle_info(message, state) → new_state
       - handle_task_end(pid, result, state) → new_state
     """
-
-    def __init__(self):
-        super().__init__()
-        self._running_tasks: Set[PID] = set()
-        self._max_tasks: int | None = None
-
-    def set_max_tasks(self, limit: int | None):
-        """Set the maximum number of concurrent tasks."""
-        self._max_tasks = limit
     
     @override
     async def run(self, state: S) -> S:
@@ -80,16 +73,10 @@ class GenServer(Actor, Generic[R,S]):
 
     async def _do_task_end(self, pid: PID, val: Any, state: S, success: bool) -> S:
         """Internal handler for task completion."""
-        if pid in self._running_tasks:
-            self._running_tasks.remove(pid)
-        
-        result = {"status": "ok" if success else "error", "value": val}
-        return await self.handle_task_end(pid, result, state)
+        return await self.handle_task_end(pid, "success" if success else "failure", val, state)
 
-    async def spawn_task(self, func, *args, **kwargs) -> PID | None:
+    async def spawn_task(self, func: MaybeAwaitableCallable, *args: Any, **kwargs: Any) -> PID | None:
         """Spawn a new task managed by this GenServer."""
-        if self._max_tasks is not None and len(self._running_tasks) >= self._max_tasks:
-            return None
 
         # Wrap func to apply args/kwargs
         async def _wrapped():
@@ -105,7 +92,6 @@ class GenServer(Actor, Generic[R,S]):
             success_message_name="$task_success",
             failure_message_name="$task_failure"
         )
-        self._running_tasks.add(handle.pid)
         return handle.pid
     
     # --- Override these ---
@@ -134,7 +120,7 @@ class GenServer(Actor, Generic[R,S]):
         """
         return state
 
-    async def handle_task_end(self, pid: PID, result: dict[str, Any], state: S) -> S:
+    async def handle_task_end(self, child_pid: PID, status: str, result: R, state: S) -> S:  # pyright: ignore[reportUnusedParameter]
         """
         Handle task completion or failure.
         result is {"status": "ok"|"error", "value": res|err}

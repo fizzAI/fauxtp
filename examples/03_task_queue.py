@@ -5,6 +5,7 @@ Demonstrates a job queue with multiple workers processing tasks concurrently.
 Workers pull tasks from queue, process them, and report results.
 """
 
+from typing_extensions import override
 import anyio
 import random
 from fauxtp import GenServer, Supervisor, ChildSpec, call, cast, RestartStrategy, RestartType
@@ -68,8 +69,6 @@ class Worker(GenServer):
         super().__init__()
         self.worker_id = worker_id
         self.queue_pid = queue_pid
-        # Limit to 2 concurrent tasks per worker
-        self.set_max_tasks(2)
     
     async def init(self):
         print(f"[Worker-{self.worker_id}] Starting")
@@ -91,7 +90,6 @@ class Worker(GenServer):
                 task = await call(state["queue"], ("dequeue",), timeout=1.0)
                 
                 if task:
-                    # Process task in background using the new Task system
                     print(f"[Worker-{state['id']}] Spawning task {task['id']}")
                     pid = await self.spawn_task(self._process_task, task)
                     if pid:
@@ -109,16 +107,17 @@ class Worker(GenServer):
         
         return state
 
-    async def handle_task_end(self, pid, result, state):
-        task_id = state["active_tasks"].pop(pid, "unknown")
+    @override
+    async def handle_task_end(self, child_pid, status, result, state):
+        task_id = state["active_tasks"].pop(child_pid, "unknown")
         
-        if result["status"] == "ok":
+        if status == "success":
             print(f"[Worker-{state['id']}] Task {task_id} finished successfully")
-            await cast(state["queue"], ("complete", task_id, result["value"]))
+            await cast(state["queue"], ("complete", task_id, result))
             state["processed"] += 1
         else:
             print(f"[Worker-{state['id']}] Task {task_id} failed: {result['value']}")
-            await cast(state["queue"], ("fail", task_id, result["value"]))
+            await cast(state["queue"], ("fail", task_id, result))
             
         return state
     
