@@ -17,8 +17,8 @@ Handle asynchronous request. Returns `new_state`.
 #### `async handle_info(self, message: R, state: S) -> S`
 Handle other messages. Returns `new_state`.
 
-#### `async handle_task_end(self, pid: PID, result: dict[str, Any], state: S) -> S`
-Handle task completion or failure. `result` is `{"status": "ok"|"error", "value": res|err}`.
+#### `async handle_task_end(self, child_pid: PID, status: Literal["success"] | Literal["failure"], result: R, state: S) -> S`
+Handle task completion or failure.
 
 ### Public Methods
 
