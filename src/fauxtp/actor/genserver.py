@@ -8,7 +8,10 @@ import functools
 from typing import Any, Generic
 from typing_extensions import override, TypeVar
 
+from fauxtp.type_utils import MaybeAwaitableCallable
+
 from .base import Actor
+from .task import Task
 from ..messaging import send
 from ..primitives.pid import PID, Ref
 from ..primitives.pattern import ANY
@@ -26,6 +29,7 @@ class GenServer(Actor, Generic[R,S]):
       - handle_call(request, from_ref, state) → (reply, new_state)
       - handle_cast(request, state) → new_state
       - handle_info(message, state) → new_state
+      - handle_task_end(pid, result, state) → new_state
     """
     
     @override
@@ -33,15 +37,23 @@ class GenServer(Actor, Generic[R,S]):
         """Main GenServer loop - dispatches to handle_* methods."""
         return await self.receive(
             # call: ($call, ref, from_pid, request)
-            (("$call", Ref, PID, ANY), 
+            (("$call", Ref, PID, ANY),
               functools.partial(self._do_call, state=state)),
             
-            # cast: ($cast, request)  
+            # cast: ($cast, request)
             (("$cast", ANY),
               functools.partial(self._do_cast, state=state)),
+
+            # task success: ($$success, pid, result)
+            (("$task_success", PID, ANY),
+              functools.partial(self._do_task_end, state=state, success=True)),
+
+            # task failure: ($$failure, pid, error)
+            (("$task_failure", PID, ANY),
+              functools.partial(self._do_task_end, state=state, success=False)),
             
             # anything else is info
-            (ANY, 
+            (ANY,
               functools.partial(self._do_info, state=state)),
         )
     
@@ -58,6 +70,29 @@ class GenServer(Actor, Generic[R,S]):
     async def _do_info(self, message: R, state: S) -> S:
         """Handle info message."""
         return await self.handle_info(message, state)
+
+    async def _do_task_end(self, pid: PID, val: Any, state: S, success: bool) -> S:
+        """Internal handler for task completion."""
+        return await self.handle_task_end(pid, "success" if success else "failure", val, state)
+
+    async def spawn_task(self, func: MaybeAwaitableCallable, *args: Any, **kwargs: Any) -> PID | None:
+        """Spawn a new task managed by this GenServer."""
+
+        # Wrap func to apply args/kwargs
+        async def _wrapped():
+            res = func(*args, **kwargs)
+            if hasattr(res, "__await__"):
+                return await res
+            return res
+
+        handle = await Task.start_link(
+            task_group=self.children,
+            func=_wrapped,
+            notify_pid=self.pid,
+            success_message_name="$task_success",
+            failure_message_name="$task_failure"
+        )
+        return handle.pid
     
     # --- Override these ---
     
@@ -82,5 +117,11 @@ class GenServer(Actor, Generic[R,S]):
         Handle other messages. Returns new_state.
         
         Override this method to handle info messages.
+        """
+        return state
+
+    async def handle_task_end(self, child_pid: PID, status: str, result: R, state: S) -> S:  # pyright: ignore[reportUnusedParameter]
+        """
+        Handle task completion or failure.
         """
         return state

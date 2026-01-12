@@ -1,5 +1,6 @@
 import anyio
 import pytest
+from typing import Any
 
 from src.fauxtp import Actor, ANY
 from src.fauxtp.actor.task import Task
@@ -21,7 +22,7 @@ async def work_slow():
 
 
 class ParentForwarder(Actor):
-    def __init__(self, send_stream: anyio.abc.ObjectSendStream):
+    def __init__(self, send_stream: Any):
         super().__init__()
         self._send_stream = send_stream
 
@@ -73,7 +74,7 @@ async def test_task_spawn_and_notify_parent_gets_success_and_failure_and_cancel(
     events_send, events_recv = anyio.create_memory_object_stream(50)
 
     async with anyio.create_task_group() as tg:
-        parent_pid = await ParentForwarder.start(events_send, task_group=tg)
+        parent_pid = await ParentForwarder.start(task_group=tg, send_stream=events_send)
 
         t_ok = await Task.spawn_and_notify(work_ok, tg, parent_pid)
         t_fail = await Task.spawn_and_notify(work_fail, tg, parent_pid)
