@@ -123,6 +123,5 @@ class GenServer(Actor, Generic[R,S]):
     async def handle_task_end(self, child_pid: PID, status: str, result: R, state: S) -> S:  # pyright: ignore[reportUnusedParameter]
         """
         Handle task completion or failure.
-        result is {"status": "ok"|"error", "value": res|err}
         """
         return state
