@@ -16,6 +16,7 @@ To implement a `GenServer`, you need to define:
 2. `handle_call(self, request, _from, state)`: Handles synchronous requests.
 3. `handle_cast(self, request, state)`: Handles asynchronous requests.
 4. `handle_info(self, msg, state)`: Handles all other messages.
+5. `handle_task_end(self, pid, result, state)`: Handles completion of background tasks.
 
 ```python
 from fauxtp import GenServer, call, cast
@@ -54,3 +55,31 @@ val = await call(pid, "pop") # 1
 ## State Immutability
 
 It is highly recommended to treat the state as immutable. Instead of modifying the `state` object, always return a new state from your handlers.
+
+## Background Tasks
+
+`GenServer` provides a built-in way to spin off long-running tasks without blocking the main message loop.
+
+### Spawning Tasks
+
+Use `self.spawn_task(func, *args, **kwargs)` to start a background task.
+
+> **Warning**: `spawn_task` cannot be called inside `init()`. It requires the server to be fully started.
+
+### Handling Results
+
+When a task finishes (successfully or with an error), `handle_task_end` is called.
+
+```python
+async def handle_task_end(self, pid, result, state):
+    # result is {"status": "ok" | "error", "value": return_val | exception}
+    if result["status"] == "ok":
+        print(f"Task {pid} succeeded with {result['value']}")
+    else:
+        print(f"Task {pid} failed with {result['value']}")
+    return state
+```
+
+### Task Limiting
+
+You can limit the number of concurrent tasks using `self.set_max_tasks(limit)`. If the limit is reached, `spawn_task` returns `None`.
