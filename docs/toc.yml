@@ -17,3 +17,5 @@ project:
         - file: docs/api/testing.md
     - title: Examples
       file: docs/examples.md
+    - title: Comparisons
+      file: docs/comparisons.md
