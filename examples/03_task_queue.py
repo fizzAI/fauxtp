@@ -116,7 +116,7 @@ class Worker(GenServer):
             await cast(state["queue"], ("complete", task_id, result))
             state["processed"] += 1
         else:
-            print(f"[Worker-{state['id']}] Task {task_id} failed: {result['value']}")
+            print(f"[Worker-{state['id']}] Task {task_id} failed: {result}")
             await cast(state["queue"], ("fail", task_id, result))
             
         return state
