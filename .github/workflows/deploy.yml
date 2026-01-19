@@ -39,6 +39,15 @@ jobs:
         run: npm install -g jupyter-book
       - name: Build HTML Assets
         run: jupyter-book build --html
+      - name: Include llms.txt in site root
+        run: |
+          if [ -f public/llms.txt ]; then
+            mkdir -p _build/html
+            cp public/llms.txt _build/html/llms.txt
+            echo "Copied public/llms.txt to _build/html/llms.txt"
+          else
+            echo "public/llms.txt not found; skipping copy"
+          fi
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
