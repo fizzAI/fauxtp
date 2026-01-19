@@ -19,4 +19,4 @@ site:
   #   favicon: favicon.ico
   #   logo: site_logo.png
   static:
-    - docs/llms.txt
+    - public
