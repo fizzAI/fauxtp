@@ -15,6 +15,6 @@ site:
     logo_text: fauxtp
   actions:
     - title: Github
-      url: https://github.org/fizzAI/fauxtp
+      url: https://github.com/fizzAI/fauxtp
   #   favicon: favicon.ico
   #   logo: site_logo.png
