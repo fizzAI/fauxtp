@@ -19,3 +19,5 @@ project:
       file: docs/examples.md
     - title: Comparisons
       file: docs/comparisons.md
+    - title: LLM Agent Docs
+      file: docs/llms-txt.md
