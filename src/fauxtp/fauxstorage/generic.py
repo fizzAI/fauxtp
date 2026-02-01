@@ -24,7 +24,8 @@ class FauxStorage(Generic[T,U]):
     def __contains__(self, key: T) -> bool:
         try:
             res = self.get(key)
-            if res:
+            self.get(key)
+            return True
                 return True
             return False
         except Exception:
