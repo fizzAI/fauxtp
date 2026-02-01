@@ -1,59 +1,96 @@
 # Supervisor API
 
-## Supervisor
+The supervisor implementation lives in [`src/fauxtp/supervisor.py`](src/fauxtp/supervisor.py:1).
 
-[`fauxtp.supervisor.base.Supervisor`](src/fauxtp/supervisor/base.py:26)
+It provides a small, OTP-inspired supervisor that:
 
-Base supervisor class. Subclass and define `child_specs()` and `strategy`.
+- starts a set of child actors once
+- monitors them via `on_exit` callbacks
+- restarts children only when they exit with an `"error: ..."` reason
+- supports `ONE_FOR_ONE` and `ONE_FOR_ALL` restart strategies
 
-### Attributes
+## `RestartStrategy`
 
-- `strategy: RestartStrategy`: The restart strategy to use (default: `ONE_FOR_ONE`).
-- `max_restarts: int`: Maximum number of restarts allowed within `max_seconds` (default: 3).
-- `max_seconds: float`: Time window for `max_restarts` (default: 5.0).
+[`RestartStrategy`](src/fauxtp/supervisor.py:22)
 
-### Methods to Override
+- `ONE_FOR_ONE`: restart only the failed child
+- `ONE_FOR_ALL`: cancel all remaining children, then restart the full set once all have exited
 
-#### `def child_specs(self) -> list[ChildSpec]`
-Override to define the list of children to be supervised.
+## `ChildSpec`
 
-### Methods
+[`ChildSpec`](src/fauxtp/supervisor.py:28)
 
-#### `def child(self, child_id: str) -> PID | None`
-Get a child's PID by its unique ID.
+Fields:
 
----
+- `actor: type[Actor]` – child actor class (see [`Actor`](src/fauxtp/actor/base.py:30))
+- `name: str` – name used for bookkeeping and registry registration
+- `args: tuple[Any, ...] | None` – positional args passed to the actor constructor
 
-## ChildSpec
+## `Supervisor`
 
-[`fauxtp.supervisor.child_spec.ChildSpec`](src/fauxtp/supervisor/child_spec.py:26)
+[`Supervisor`](src/fauxtp/supervisor.py:34)
 
-Specification for a supervised child actor.
+### Construction
 
-### Attributes
+`Supervisor(children, strategy=..., registry=...)` where:
 
-- `id: str`: Unique identifier for this child.
-- `actor_class: type[Actor]`: The Actor class to instantiate.
-- `args: tuple[Any, ...]`: Positional arguments for the actor constructor.
-- `kwargs: dict[str, Any]`: Keyword arguments for the actor constructor.
-- `restart: RestartType`: Restart behavior for this child (default: `PERMANENT`).
+- `children: list[ChildSpec]`
+- `strategy: RestartStrategy` (default: `RestartStrategy.ONE_FOR_ONE`)
+- `registry: PID | None` – registry pid to register child names into
 
----
+If `registry` is `None`, the supervisor starts its own [`Registry`](src/fauxtp/registry.py:11) as a child actor.
 
-## Enums
+### Restart semantics
 
-### RestartStrategy
+The actor runtime reports exit reasons as:
 
-[`fauxtp.supervisor.child_spec.RestartStrategy`](src/fauxtp/supervisor/child_spec.py:11)
+- `"normal"`
+- `"cancelled"`
+- `"error: {exc!r}"`
 
-- `ONE_FOR_ONE`: Only restart the failed child.
-- `ONE_FOR_ALL`: Restart all children if one fails.
-- `REST_FOR_ONE`: Restart the failed child and all children started after it.
+The supervisor restarts only when the reason starts with `"error:"` (see [`Supervisor._should_restart()`](src/fauxtp/supervisor.py:93)).
 
-### RestartType
+### Example
 
-[`fauxtp.supervisor.child_spec.RestartType`](src/fauxtp/supervisor/child_spec.py:18)
+```python
+import anyio
 
-- `PERMANENT`: Always restart.
-- `TRANSIENT`: Restart only on abnormal exit (reason contains "error").
-- `TEMPORARY`: Never restart.
+from fauxtp.actor.genserver import GenServer
+from fauxtp.messaging import call
+from fauxtp.registry import Registry
+from fauxtp.supervisor import ChildSpec, RestartStrategy, Supervisor
+
+
+class Worker(GenServer):
+    async def init(self):
+        return 0
+
+    async def handle_call(self, request, _from, state):
+        return state, state
+
+
+async def main():
+    async with anyio.create_task_group() as tg:
+        registry = await Registry.start(task_group=tg)
+
+        _sup_pid = await Supervisor.start(
+            children=[
+                ChildSpec(actor=Worker, name="worker-1"),
+                ChildSpec(actor=Worker, name="worker-2"),
+            ],
+            strategy=RestartStrategy.ONE_FOR_ONE,
+            registry=registry,
+            task_group=tg,
+        )
+
+        worker_1 = await call(registry, ("get", "worker-1"))
+        assert worker_1 is not None
+
+
+anyio.run(main)
+```
+
+Notes:
+
+- Child `name`s are registered via `cast(registry, ("register", name, pid))` (see [`Registry.handle_cast()`](src/fauxtp/registry.py:29)).
+- The supervisor is intentionally minimal; it currently supports only `ONE_FOR_ONE` and `ONE_FOR_ALL`, and uses a single restart rule (restart only on `"error: ..."` exits).

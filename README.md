@@ -62,23 +62,49 @@ anyio.run(main)
 Let it crash. The supervisor restarts it.
 
 ```python
-from fauxtp import Supervisor, ChildSpec, RestartStrategy
+import anyio
 
-class App(Supervisor):
-    strategy = RestartStrategy.ONE_FOR_ONE
+from fauxtp import GenServer, call
+from fauxtp.registry import Registry
+from fauxtp.supervisor import Supervisor, ChildSpec, RestartStrategy
 
-    def child_specs(self):
-        return [
-            ChildSpec(id="c1", actor_class=Counter),
-            ChildSpec(id="c2", actor_class=Counter),
-        ]
+
+class Counter(GenServer):
+    async def init(self):
+        return {"count": 0}
+
+    async def handle_call(self, request, _from, state):
+        match request:
+            case "get":
+                return state["count"], state
+
+
+async def main():
+    async with anyio.create_task_group() as tg:
+        registry = await Registry.start(task_group=tg)
+
+        _sup_pid = await Supervisor.start(
+            children=[
+                ChildSpec(actor=Counter, name="c1"),
+                ChildSpec(actor=Counter, name="c2"),
+            ],
+            strategy=RestartStrategy.ONE_FOR_ONE,
+            registry=registry,
+            task_group=tg,
+        )
+
+        c1 = await call(registry, ("get", "c1"))
+        print(c1)  # PID(...) or None
+
+
+anyio.run(main)
 ```
 
 ## What's inside?
 
 *   **Actors**: `send`, `receive` (with pattern matching).
 *   **GenServer**: `call`, `cast`, `info`.
-*   **Supervisors**: `one_for_one`, `one_for_all`, `rest_for_one`.
+*   **Supervisors**: `one_for_one`, `one_for_all`.
 *   **Registry**: `register(name, pid)`, `whereis(name)`.
 
 ## Why?

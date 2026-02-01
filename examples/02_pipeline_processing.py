@@ -6,7 +6,10 @@ Producer generates data → Processor transforms it → Consumer stores results.
 """
 
 import anyio
-from fauxtp import GenServer, Supervisor, ChildSpec, PID, call, cast, register, whereis
+
+from fauxtp import GenServer, PID, call, cast
+from fauxtp.registry import Registry
+from fauxtp.supervisor import ChildSpec, RestartStrategy, Supervisor
 
 
 class Producer(GenServer):
@@ -14,7 +17,6 @@ class Producer(GenServer):
     
     async def init(self):
         print("[Producer] Starting")
-        register("pipeline:producer", self.pid)
         return {"count": 0, "running": True}
     
     async def handle_call(self, request, from_ref, state):
@@ -41,7 +43,6 @@ class Processor(GenServer):
     
     async def init(self):
         print(f"[Processor:{self.worker_id}] Starting")
-        register(f"pipeline:processor:{self.worker_id}", self.pid)
         return {"id": self.worker_id, "processed": 0}
     
     async def handle_call(self, request, from_ref, state):
@@ -68,7 +69,6 @@ class Consumer(GenServer):
     
     async def init(self):
         print("[Consumer] Starting")
-        register("pipeline:consumer", self.pid)
         return {"results": [], "count": 0}
     
     async def handle_cast(self, request, state):
@@ -94,7 +94,6 @@ class PipelineCoordinator(GenServer):
     
     async def init(self):
         print("[Coordinator] Starting pipeline")
-        register("pipeline:coordinator", self.pid)
         return {
             "producer": None,
             "processors": [],
@@ -162,35 +161,36 @@ class PipelineCoordinator(GenServer):
         print("\n[Coordinator] Pipeline complete")
 
 
-class PipelineApp(Supervisor):
-    """Supervisor for pipeline components."""
-    
-    def child_specs(self):
-        return [
-            ChildSpec(id="producer", actor_class=Producer),
-            ChildSpec(id="processor1", actor_class=Processor, args=(1,)),
-            ChildSpec(id="processor2", actor_class=Processor, args=(2,)),
-            ChildSpec(id="processor3", actor_class=Processor, args=(3,)),
-            ChildSpec(id="consumer", actor_class=Consumer),
-            ChildSpec(id="coordinator", actor_class=PipelineCoordinator),
-        ]
-
-
 async def main():
     """Run pipeline processing demo."""
     print("=== Pipeline Processing Example ===\n")
     
     async with anyio.create_task_group() as tg:
-        _app_pid = await PipelineApp.start(task_group=tg)
+        registry = await Registry.start(task_group=tg)
+
+        _app_pid = await Supervisor.start(
+            children=[
+                ChildSpec(actor=Producer, name="pipeline:producer"),
+                ChildSpec(actor=Processor, name="pipeline:processor:1", args=(1,)),
+                ChildSpec(actor=Processor, name="pipeline:processor:2", args=(2,)),
+                ChildSpec(actor=Processor, name="pipeline:processor:3", args=(3,)),
+                ChildSpec(actor=Consumer, name="pipeline:consumer"),
+                ChildSpec(actor=PipelineCoordinator, name="pipeline:coordinator"),
+            ],
+            strategy=RestartStrategy.ONE_FOR_ONE,
+            registry=registry,
+            task_group=tg,
+        )
+
         await anyio.sleep(0.5)
 
-        producer = whereis("pipeline:producer")
-        consumer = whereis("pipeline:consumer")
-        coordinator = whereis("pipeline:coordinator")
+        producer = await call(registry, ("get", "pipeline:producer"))
+        consumer = await call(registry, ("get", "pipeline:consumer"))
+        coordinator = await call(registry, ("get", "pipeline:coordinator"))
         processors = [
-            whereis("pipeline:processor:1"),
-            whereis("pipeline:processor:2"),
-            whereis("pipeline:processor:3"),
+            await call(registry, ("get", "pipeline:processor:1")),
+            await call(registry, ("get", "pipeline:processor:2")),
+            await call(registry, ("get", "pipeline:processor:3")),
         ]
 
         if producer is None or consumer is None or coordinator is None or any(p is None for p in processors):

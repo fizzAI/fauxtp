@@ -6,7 +6,10 @@ Demonstrates concurrent access patterns and state management.
 """
 
 import anyio
-from fauxtp import GenServer, Supervisor, ChildSpec, PID, call, cast, register, whereis
+
+from fauxtp import GenServer, PID, call, cast
+from fauxtp.registry import Registry
+from fauxtp.supervisor import ChildSpec, RestartStrategy, Supervisor
 
 
 class KVStore(GenServer):
@@ -14,7 +17,6 @@ class KVStore(GenServer):
     
     async def init(self):
         print("[KVStore] Starting")
-        register("kvstore", self.pid)
         return {"data": {}, "reads": 0, "writes": 0}
     
     async def handle_call(self, request, from_ref, state):
@@ -42,21 +44,21 @@ class KVStore(GenServer):
 class Writer(GenServer):
     """Actor that writes to KV store."""
     
-    def __init__(self, name: str, store_name: str):
+    def __init__(self, name: str, store_name: str, registry: PID):
         super().__init__()
         self.name = name
         self.store_name = store_name
+        self.registry = registry
     
     async def init(self):
         print(f"[Writer:{self.name}] Starting")
-        register(f"writer:{self.name}", self.pid)
         return {"name": self.name, "writes": 0}
     
     async def handle_cast(self, request, state):
         match request:
             case ("write", key, value):
-                store = whereis(self.store_name)
-                if store:
+                store = await call(self.registry, ("get", self.store_name))
+                if store is not None:
                     await call(store, ("put", key, value))
                     state["writes"] += 1
                     print(f"[Writer:{state['name']}] Wrote {key}={value}")
@@ -66,38 +68,25 @@ class Writer(GenServer):
 class Reader(GenServer):
     """Actor that reads from KV store."""
     
-    def __init__(self, name: str, store_name: str):
+    def __init__(self, name: str, store_name: str, registry: PID):
         super().__init__()
         self.name = name
         self.store_name = store_name
+        self.registry = registry
     
     async def init(self):
         print(f"[Reader:{self.name}] Starting")
-        register(f"reader:{self.name}", self.pid)
         return {"name": self.name, "reads": 0}
     
     async def handle_cast(self, request, state):
         match request:
             case ("read", key):
-                store = whereis(self.store_name)
-                if store:
+                store = await call(self.registry, ("get", self.store_name))
+                if store is not None:
                     value = await call(store, ("get", key))
                     state["reads"] += 1
                     print(f"[Reader:{state['name']}] Read {key}={value}")
         return state
-
-
-class KVStoreApp(Supervisor):
-    """Supervisor managing KV store and clients."""
-    
-    def child_specs(self):
-        return [
-            ChildSpec(id="store", actor_class=KVStore),
-            ChildSpec(id="writer1", actor_class=Writer, args=("W1", "kvstore")),
-            ChildSpec(id="writer2", actor_class=Writer, args=("W2", "kvstore")),
-            ChildSpec(id="reader1", actor_class=Reader, args=("R1", "kvstore")),
-            ChildSpec(id="reader2", actor_class=Reader, args=("R2", "kvstore")),
-        ]
 
 
 async def main():
@@ -105,14 +94,28 @@ async def main():
     print("=== Concurrent KV Store Example ===\n")
     
     async with anyio.create_task_group() as tg:
-        _app_pid = await KVStoreApp.start(task_group=tg)
+        registry = await Registry.start(task_group=tg)
+
+        _app_pid = await Supervisor.start(
+            children=[
+                ChildSpec(actor=KVStore, name="kvstore"),
+                ChildSpec(actor=Writer, name="writer:W1", args=("W1", "kvstore", registry)),
+                ChildSpec(actor=Writer, name="writer:W2", args=("W2", "kvstore", registry)),
+                ChildSpec(actor=Reader, name="reader:R1", args=("R1", "kvstore", registry)),
+                ChildSpec(actor=Reader, name="reader:R2", args=("R2", "kvstore", registry)),
+            ],
+            strategy=RestartStrategy.ONE_FOR_ONE,
+            registry=registry,
+            task_group=tg,
+        )
+
         await anyio.sleep(0.3)
 
-        store = whereis("kvstore")
-        w1 = whereis("writer:W1")
-        w2 = whereis("writer:W2")
-        r1 = whereis("reader:R1")
-        r2 = whereis("reader:R2")
+        store = await call(registry, ("get", "kvstore"))
+        w1 = await call(registry, ("get", "writer:W1"))
+        w2 = await call(registry, ("get", "writer:W2"))
+        r1 = await call(registry, ("get", "reader:R1"))
+        r2 = await call(registry, ("get", "reader:R2"))
 
         if not all([store, w1, w2, r1, r2]):
             raise RuntimeError("Example failed to start/register all actors")
