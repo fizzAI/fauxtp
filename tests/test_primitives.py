@@ -5,6 +5,7 @@ import anyio
 from src.fauxtp.primitives.pid import PID, Ref
 from src.fauxtp.primitives.mailbox import Mailbox, ReceiveTimeout
 from src.fauxtp.primitives.pattern import ANY, IGNORE, match_pattern
+import uuid
 
 
 class TestPID:
@@ -12,18 +13,20 @@ class TestPID:
     
     def test_pid_creation(self):
         """Test PID can be created."""
-        mailbox = Mailbox()
-        import uuid
-        pid = PID(_id=uuid.uuid4(), _mailbox=mailbox)
+        pid = PID(_id=uuid.uuid4())
         assert pid is not None
-        assert pid._mailbox is mailbox
+        assert isinstance(pid.id, uuid.UUID)
+    
+    def test_pid_is_local_by_default(self):
+        """Test PIDs are local by default."""
+        pid = PID(_id=uuid.uuid4())
+        assert pid.is_local()
+        assert pid.node is None
     
     def test_pid_hashable(self):
         """Test PIDs can be used as dict keys."""
-        mailbox = Mailbox()
-        import uuid
-        pid1 = PID(_id=uuid.uuid4(), _mailbox=mailbox)
-        pid2 = PID(_id=uuid.uuid4(), _mailbox=mailbox)
+        pid1 = PID(_id=uuid.uuid4())
+        pid2 = PID(_id=uuid.uuid4())
         
         d = {pid1: "value1", pid2: "value2"}
         assert d[pid1] == "value1"
@@ -31,13 +34,19 @@ class TestPID:
     
     def test_pid_equality(self):
         """Test PID equality based on UUID."""
-        mailbox = Mailbox()
-        import uuid
         id1 = uuid.uuid4()
-        pid1 = PID(_id=id1, _mailbox=mailbox)
-        pid2 = PID(_id=id1, _mailbox=mailbox)
+        pid1 = PID(_id=id1)
+        pid2 = PID(_id=id1)
         
         assert pid1 == pid2
+        assert hash(pid1) == hash(pid2)
+    
+    def test_pid_inequality_different_uuids(self):
+        """Test PIDs with different UUIDs are not equal."""
+        pid1 = PID(_id=uuid.uuid4())
+        pid2 = PID(_id=uuid.uuid4())
+        
+        assert pid1 != pid2
 
 
 class TestRef:
@@ -48,7 +57,7 @@ class TestRef:
         ref1 = Ref()
         ref2 = Ref()
         assert ref1 != ref2
-        assert ref1._id != ref2._id
+        assert ref1.id != ref2.id
     
     def test_ref_hashable(self):
         """Test Refs can be used as dict keys."""

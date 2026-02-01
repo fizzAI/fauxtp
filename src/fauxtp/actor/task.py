@@ -12,8 +12,11 @@ from .base import Actor, ActorHandle
 from ..messaging import send
 from ..primitives.pid import PID
 from ..primitives.pattern import ANY
+from ..primitives.mailbox import Mailbox
+from ..router import register_pid_mailbox, unregister_pid_mailbox, get_local_mailbox
 
 from ..type_utils import typed_lambda, MaybeAwaitableCallable
+
 
 class TaskHandle:
     """
@@ -25,16 +28,26 @@ class TaskHandle:
     def __init__(self, handle: ActorHandle):
         self._handle = handle
 
+    @property
+    def pid(self) -> PID:
+        """Get the task's PID."""
+        return self._handle.pid
+
     async def join(self) -> Any:
         """
         Wait for Task completion and return its value, or raise on failure.
         """
         pid = self._handle.pid
+        
+        # Get the mailbox from the registry instead of accessing private attribute
+        mailbox = get_local_mailbox(pid.id)
+        if mailbox is None:
+            raise RuntimeError(f"Task mailbox not found for PID {pid.id}")
 
         def _raise(ex: BaseException) -> "Any":
             raise ex
 
-        return await pid._mailbox.receive(  # pyright: ignore[reportPrivateUsage]
+        return await mailbox.receive(
             (("$success", ANY), typed_lambda[Any](lambda res: res)),
             (("$failure", ANY), typed_lambda[str](lambda reason: _raise(RuntimeError(reason)))),
         )
@@ -108,4 +121,4 @@ class Task(Actor):
             success_message_name=success_message_name,
             failure_message_name=failure_message_name,
         )
-        return TaskHandle(handle) 
+        return TaskHandle(handle)

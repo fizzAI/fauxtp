@@ -14,6 +14,7 @@ import pytest
 from src.fauxtp import Actor, ANY, send
 from src.fauxtp.primitives.mailbox import Mailbox
 from src.fauxtp.primitives.pid import PID
+from src.fauxtp.router import register_pid_mailbox, unregister_pid_mailbox
 
 
 class CounterActor(Actor):
@@ -43,17 +44,21 @@ async def test_actor_message_round_trip_without_sleeps():
         pid = await CounterActor.start(task_group=tg)
 
         reply_mailbox = Mailbox()
-        reply_pid = PID(_id=uuid.uuid4(), _mailbox=reply_mailbox)
+        reply_pid = PID(_id=uuid.uuid4())
+        register_pid_mailbox(reply_pid.id, reply_mailbox)
 
-        await send(pid, ("increment",))
-        await send(pid, ("increment_by", 2))
-        await send(pid, ("get", reply_pid))
+        try:
+            await send(pid, ("increment",))
+            await send(pid, ("increment_by", 2))
+            await send(pid, ("get", reply_pid))
 
-        count = await reply_mailbox.receive(
-            (("count", int), lambda n: n),
-            timeout=1.0,
-        )
-        assert count == 3
+            count = await reply_mailbox.receive(
+                (("count", int), lambda n: n),
+                timeout=1.0,
+            )
+            assert count == 3
+        finally:
+            unregister_pid_mailbox(reply_pid.id)
 
         tg.cancel_scope.cancel()
 

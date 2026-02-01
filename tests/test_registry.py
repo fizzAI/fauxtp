@@ -45,7 +45,7 @@ async def test_registry_register_and_get():
 
         # Retrieve it
         result = await call(registry_pid, ("get", "my_actor"), timeout=1.0)
-        assert result._id == dummy_pid._id
+        assert result.id == dummy_pid.id
 
         tg.cancel_scope.cancel()
 
@@ -59,7 +59,8 @@ async def test_registry_unregister_removes_entry():
 
         # Register and verify
         await cast(registry_pid, ("register", "temp_actor", dummy_pid))
-        assert await call(registry_pid, ("get", "temp_actor"), timeout=1.0) == dummy_pid
+        result = await call(registry_pid, ("get", "temp_actor"), timeout=1.0)
+        assert result.id == dummy_pid.id
 
         # Unregister and verify it's gone
         await cast(registry_pid, ("unregister", "temp_actor"))
@@ -82,10 +83,10 @@ async def test_registry_multiple_registrations():
         await cast(registry_pid, ("register", "actor2", pid2))
         await cast(registry_pid, ("register", "actor3", pid3))
 
-        # Verify all can be retrieved (compare by _id since mailbox may differ)
-        assert (await call(registry_pid, ("get", "actor1"), timeout=1.0))._id == pid1._id
-        assert (await call(registry_pid, ("get", "actor2"), timeout=1.0))._id == pid2._id
-        assert (await call(registry_pid, ("get", "actor3"), timeout=1.0))._id == pid3._id
+        # Verify all can be retrieved (compare by id)
+        assert (await call(registry_pid, ("get", "actor1"), timeout=1.0)).id == pid1.id
+        assert (await call(registry_pid, ("get", "actor2"), timeout=1.0)).id == pid2.id
+        assert (await call(registry_pid, ("get", "actor3"), timeout=1.0)).id == pid3.id
 
         tg.cancel_scope.cancel()
 
@@ -100,11 +101,13 @@ async def test_registry_register_overwrites_existing():
 
         # Register first PID
         await cast(registry_pid, ("register", "shared_name", pid1))
-        assert (await call(registry_pid, ("get", "shared_name"), timeout=1.0))._id == pid1._id
+        result1 = await call(registry_pid, ("get", "shared_name"), timeout=1.0)
+        assert result1.id == pid1.id
 
         # Register second PID with same name
         await cast(registry_pid, ("register", "shared_name", pid2))
-        assert (await call(registry_pid, ("get", "shared_name"), timeout=1.0))._id == pid2._id
+        result2 = await call(registry_pid, ("get", "shared_name"), timeout=1.0)
+        assert result2.id == pid2.id
 
         tg.cancel_scope.cancel()
 
@@ -141,10 +144,10 @@ async def test_registry_concurrent_registrations():
             for i, pid in enumerate(pids):
                 reg_tg.start_soon(register_actor, f"actor_{i}", pid)
 
-        # Verify all registrations succeeded (compare by _id)
+        # Verify all registrations succeeded (compare by id)
         for i, pid in enumerate(pids):
             result = await call(registry_pid, ("get", f"actor_{i}"), timeout=1.0)
-            assert result._id == pid._id
+            assert result.id == pid.id
 
         tg.cancel_scope.cancel()
 
@@ -161,7 +164,7 @@ async def test_registry_state_isolation_between_instances():
         await cast(registry1, ("register", "my_actor", pid))
 
         # Verify it's in first but not second
-        assert (await call(registry1, ("get", "my_actor"), timeout=1.0))._id == pid._id
+        assert (await call(registry1, ("get", "my_actor"), timeout=1.0)).id == pid.id
         assert await call(registry2, ("get", "my_actor"), timeout=1.0) is None
 
         tg.cancel_scope.cancel()
@@ -175,7 +178,8 @@ async def test_registry_empty_name_allowed():
         pid = await DummyActor.start(task_group=tg)
 
         await cast(registry_pid, ("register", "", pid))
-        assert (await call(registry_pid, ("get", ""), timeout=1.0))._id == pid._id
+        result = await call(registry_pid, ("get", ""), timeout=1.0)
+        assert result.id == pid.id
 
         tg.cancel_scope.cancel()
 
