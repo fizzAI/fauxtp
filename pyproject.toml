@@ -1,6 +1,6 @@
 [project]
 name = "fauxtp"
-version = "0.2.0"
+version = "0.3.0.rc1"
 description = "Erlang/OTP primitives for Python."
 license = "BSD-2-Clause"
 readme = "README.md"
@@ -17,6 +17,9 @@ Documentation = "https://fizzai.github.io/fauxtp/"
 Repository = "https://github.com/fizzAI/fauxtp"
 
 [project.optional-dependencies]
+rpds = [
+    "rpds-py>=0.30.0"
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",

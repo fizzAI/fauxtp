@@ -8,7 +8,7 @@ Workers pull tasks from queue, process them, and report results.
 from typing_extensions import override
 import anyio
 import random
-from fauxtp import GenServer, Supervisor, ChildSpec, call, cast, RestartStrategy, RestartType
+from fauxtp import GenServer, call, cast
 
 
 class TaskQueue(GenServer):
@@ -160,32 +160,6 @@ class TaskProducer(GenServer):
                 print(f"[Producer] Generated {state['generated']} tasks")
         
         return state
-
-
-class TaskQueueApp(Supervisor):
-    """Supervisor for task queue system."""
-    
-    strategy = RestartStrategy.ONE_FOR_ONE
-    
-    def __init__(self, num_workers: int = 3):
-        super().__init__()
-        self.num_workers = num_workers
-    
-    def child_specs(self):
-        specs = [ChildSpec(id="queue", actor_class=TaskQueue, restart=RestartType.PERMANENT)]
-        
-        # Add workers (will need queue PID - simplified for example)
-        for i in range(self.num_workers):
-            specs.append(
-                ChildSpec(
-                    id=f"worker{i}",
-                    actor_class=Worker,
-                    args=(i, None),  # Queue PID would be injected
-                    restart=RestartType.PERMANENT
-                )
-            )
-        
-        return specs
 
 
 async def main():

@@ -153,45 +153,43 @@ async def handle_task_end(self, child_pid, status, result, state):
 
 Supervisors monitor other actors (children) and restart them if they crash. This is the core of the "Let it crash" philosophy.
 
+In fauxtp, the supervisor is intentionally minimal (see [`src/fauxtp/supervisor.py`](src/fauxtp/supervisor.py:1)):
+
+- Children are declared up front via a list of `ChildSpec`.
+- Children are restarted only when they exit with an `"error: ..."` reason.
+- Supported strategies are `ONE_FOR_ONE` and `ONE_FOR_ALL`.
+
 ### Restart Strategies
 
-- **ONE_FOR_ONE**: Only restart the failed child
-- **ONE_FOR_ALL**: Restart all children if one fails
-- **REST_FOR_ONE**: Restart the failed child and all children started after it
+- **ONE_FOR_ONE**: restart only the failed child
+- **ONE_FOR_ALL**: cancel remaining children and restart the full set once all have exited
 
 ### Implementation
 
 ```python
-from fauxtp import Supervisor, ChildSpec, RestartStrategy
+import anyio
 
-class MySupervisor(Supervisor):
-    strategy = RestartStrategy.ONE_FOR_ONE
-    max_restarts = 3
-    max_seconds = 5.0
+from fauxtp.registry import Registry
+from fauxtp.supervisor import Supervisor, ChildSpec, RestartStrategy
 
-    def child_specs(self):
-        return [
-            ChildSpec(id="worker1", actor_class=Worker),
-            ChildSpec(id="worker2", actor_class=Worker),
-        ]
+
+async def main():
+    async with anyio.create_task_group() as tg:
+        registry = await Registry.start(task_group=tg)
+
+        await Supervisor.start(
+            children=[
+                ChildSpec(actor=Worker, name="worker1"),
+                ChildSpec(actor=Worker, name="worker2"),
+            ],
+            strategy=RestartStrategy.ONE_FOR_ONE,
+            registry=registry,
+            task_group=tg,
+        )
+
+
+anyio.run(main)
 ```
-
-### Child Specifications
-
-```python
-spec = ChildSpec(
-    id="my_worker",
-    actor_class=MyWorker,
-    args=(1, 2, 3),
-    kwargs={"key": "value"},
-    restart="permanent"  # or "temporary", "transient"
-)
-```
-
-**Restart Types:**
-- `PERMANENT`: Always restart
-- `TRANSIENT`: Restart only on abnormal exit (reason contains "error")
-- `TEMPORARY`: Never restart
 
 ---
 
@@ -263,37 +261,27 @@ Spawn a new task managed by this GenServer. Returns the task's PID, or `None` if
 **`set_max_tasks(self, limit: int | None) -> None`**
 Set the maximum number of concurrent tasks.
 
-## Supervisor (`fauxtp.supervisor.base.Supervisor`)
+## Supervisor (`fauxtp.supervisor.Supervisor`)
 
-Base supervisor class. Subclass and define `child_specs()` and `strategy`.
+Minimal supervisor actor (see [`src/fauxtp/supervisor.py`](src/fauxtp/supervisor.py:1)).
 
-### Attributes
+Start it inside an AnyIO `TaskGroup` (same as any actor) and pass:
 
-**`strategy: RestartStrategy`** - The restart strategy to use (default: `ONE_FOR_ONE`)
-**`max_restarts: int`** - Maximum number of restarts allowed within `max_seconds` (default: 3)
-**`max_seconds: float`** - Time window for `max_restarts` (default: 5.0)
+- `children: list[ChildSpec]`
+- `strategy: RestartStrategy` (default: `ONE_FOR_ONE`)
+- `registry: PID | None` (if `None`, the supervisor starts an internal registry)
 
-### Methods to Override
+The supervisor restarts children only when their exit reason starts with `"error:"`.
 
-**`def child_specs(self) -> list[ChildSpec]`**
-Override to define the list of children to be supervised.
-
-### Methods
-
-**`def child(self, child_id: str) -> PID | None`**
-Get a child's PID by its unique ID.
-
-## ChildSpec (`fauxtp.supervisor.child_spec.ChildSpec`)
+## ChildSpec (`fauxtp.supervisor.ChildSpec`)
 
 Specification for a supervised child actor.
 
 ### Attributes
 
-**`id: str`** - Unique identifier for this child
-**`actor_class: type[Actor]`** - The Actor class to instantiate
-**`args: tuple[Any, ...]`** - Positional arguments for the actor constructor
-**`kwargs: dict[str, Any]`** - Keyword arguments for the actor constructor
-**`restart: RestartType`** - Restart behavior for this child (default: `PERMANENT`)
+**`actor: type[Actor]`** - The actor class to start
+**`name: str`** - Name used for bookkeeping and registry registration
+**`args: tuple[Any, ...] | None`** - Positional args for the actor constructor
 
 ## Messaging (`fauxtp.messaging`)
 
@@ -393,26 +381,36 @@ async def handle_cast(self, request, state):
 
 ## Supervision Trees
 
-Supervisors can supervise other supervisors, allowing you to build complex, hierarchical fault-tolerant systems:
+Supervisors can supervise other supervisors, allowing you to build hierarchical fault-tolerant systems.
+
+Because `Supervisor` is just an `Actor`, you can supervise a subtree by using a `ChildSpec` whose `actor` is `Supervisor` and whose `args` construct the subtree supervisor:
 
 ```python
-class WorkerSupervisor(Supervisor):
-    strategy = RestartStrategy.ONE_FOR_ONE
-    
-    def child_specs(self):
-        return [
-            ChildSpec(id="worker1", actor_class=Worker),
-            ChildSpec(id="worker2", actor_class=Worker),
-        ]
+from fauxtp.supervisor import Supervisor, ChildSpec, RestartStrategy
 
-class AppSupervisor(Supervisor):
-    strategy = RestartStrategy.ONE_FOR_ALL
-    
-    def child_specs(self):
-        return [
-            ChildSpec(id="workers", actor_class=WorkerSupervisor),
-            ChildSpec(id="monitor", actor_class=MonitorActor),
-        ]
+app_children = [
+    ChildSpec(actor=Worker, name="worker1"),
+    ChildSpec(actor=Worker, name="worker2"),
+]
+
+app_spec = ChildSpec(
+    actor=Supervisor,
+    name="workers",
+    args=(app_children, RestartStrategy.ONE_FOR_ONE, registry),
+)
+
+root_children = [
+    app_spec,
+    ChildSpec(actor=MonitorActor, name="monitor"),
+]
+
+# Start the root supervisor with ONE_FOR_ALL
+await Supervisor.start(
+    children=root_children,
+    strategy=RestartStrategy.ONE_FOR_ALL,
+    registry=registry,
+    task_group=tg,
+)
 ```
 
 ## Lifecycle Management
@@ -442,7 +440,7 @@ Async Python often devolves into a mess of unmanaged tasks and race conditions. 
 **What's inside:**
 - **Actors**: `send`, `receive` (with pattern matching)
 - **GenServer**: `call`, `cast`, `info`
-- **Supervisors**: `one_for_one`, `one_for_all`, `rest_for_one`
+- **Supervisors**: `one_for_one`, `one_for_all`
 - **Registry**: `register(name, pid)`, `whereis(name)`
 
 **Note:** This is not the BEAM. It is not as fast. But it is a way to write concurrent Python that doesn't make you want to quit programming.

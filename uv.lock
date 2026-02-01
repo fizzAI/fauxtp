@@ -492,7 +492,7 @@ wheels = [
 
 [[package]]
 name = "fauxtp"
-version = "0.1.0.post1"
+version = "0.3.0rc1"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },
@@ -510,6 +510,9 @@ docs = [
     { name = "mkdocs-material" },
     { name = "mkdocstrings", extra = ["python"] },
 ]
+rpds = [
+    { name = "rpds-py" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -521,8 +524,9 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
+    { name = "rpds-py", marker = "extra == 'rpds'", specifier = ">=0.30.0" },
 ]
-provides-extras = ["dev", "docs"]
+provides-extras = ["rpds", "dev", "docs"]
 
 [[package]]
 name = "fqdn"

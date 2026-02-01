@@ -8,8 +8,13 @@ Request: TypeAlias = tuple[Literal["pop"]] | tuple[Literal["push"], Any]
 
 class Stack(GenServer[Request, list[str]]):
     @override
-    async def init(self, elements: str = ""):
-        return elements.split(',')
+    def __init__(self, elements: str = ""):
+        super().__init__()
+        self.__elements=elements
+
+    @override
+    async def init(self):
+        return self.__elements.split(',')
 
     @override
     async def handle_call(self, request: Request, from_ref: Ref, state: list[str]) -> tuple[Any, Any]:
