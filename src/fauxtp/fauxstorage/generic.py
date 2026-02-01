@@ -27,5 +27,5 @@ class FauxStorage(Generic[T,U]):
             if res:
                 return True
             return False
-        except:
+        except Exception:
             return False
