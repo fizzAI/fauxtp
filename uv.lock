@@ -492,7 +492,7 @@ wheels = [
 
 [[package]]
 name = "fauxtp"
-version = "0.3.0"
+version = "0.3.0rc2"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },

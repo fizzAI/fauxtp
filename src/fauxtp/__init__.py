@@ -6,6 +6,7 @@ from .primitives.pattern import ANY, IGNORE
 from .actor.base import Actor
 from .actor.genserver import GenServer
 from .registry import Registry
+from .supervisor import Supervisor, ChildSpec
 from .messaging import send, call, cast
 from .router import (
     Router,
@@ -32,6 +33,9 @@ __all__ = [
     "GenServer",
     # Registry
     "Registry",
+    #Supervisor
+    "Supervisor",
+    "ChildSpec",
     # Messaging
     "send",
     "call",
