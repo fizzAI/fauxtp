@@ -9,6 +9,7 @@ This module provides:
 
 from __future__ import annotations
 
+from typing_extensions import override
 import uuid
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
@@ -98,6 +99,7 @@ class LocalRouter(Router):
     Uses the global _local_mailbox_registry to look up mailboxes.
     """
     
+    @override
     async def route(self, target: PID, message: Any) -> None:
         """Deliver message to a local PID's mailbox.
         
@@ -119,12 +121,13 @@ class LocalRouter(Router):
         
         await mailbox.put(message)
     
+    @override
     def can_route(self, target: PID) -> bool:
         """Check if the target PID is registered locally."""
         from .primitives.pid import PID
         
-        if not isinstance(target, PID):
-            return False
+        if not isinstance(target, PID):  # pyright: ignore[reportUnnecessaryIsInstance]
+            return False  # pyright: ignore[reportUnreachable]
         return is_local_pid(target.id)
 
 
@@ -162,7 +165,9 @@ class MultiRouter(Router):
     def __init__(self, local_router: Router | None = None) -> None:
         self._local_router = local_router or LocalRouter()
         # Future: self._remote_router = remote_router
+
     
+    @override
     async def route(self, target: PID, message: Any) -> None:
         """Route message using the appropriate sub-router.
         
@@ -172,6 +177,7 @@ class MultiRouter(Router):
         # Future: check if target is local or remote
         await self._local_router.route(target, message)
     
+    @override
     def can_route(self, target: PID) -> bool:
         """Check if any sub-router can handle this PID."""
         # For now, only local routing is supported
