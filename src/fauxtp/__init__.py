@@ -8,6 +8,17 @@ from .actor.genserver import GenServer
 from .registry import Registry
 from .supervisor import Supervisor, ChildSpec
 from .messaging import send, call, cast
+from .router import (
+    Router,
+    LocalRouter,
+    MultiRouter,
+    PIDNotFound,
+    RoutingError,
+    register_pid_mailbox,
+    unregister_pid_mailbox,
+    get_local_mailbox,
+    is_local_pid,
+)
 
 __all__ = [
     # Core primitives
@@ -29,4 +40,14 @@ __all__ = [
     "send",
     "call",
     "cast",
+    # Routing
+    "Router",
+    "LocalRouter",
+    "MultiRouter",
+    "PIDNotFound",
+    "RoutingError",
+    "register_pid_mailbox",
+    "unregister_pid_mailbox",
+    "get_local_mailbox",
+    "is_local_pid",
 ]

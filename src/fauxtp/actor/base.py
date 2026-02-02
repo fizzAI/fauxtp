@@ -13,6 +13,7 @@ import uuid
 
 from ..primitives.pid import PID
 from ..primitives.mailbox import Mailbox
+from ..router import register_pid_mailbox, unregister_pid_mailbox
 
 from ..type_utils import MaybeAwaitableCallable
 
@@ -115,8 +116,11 @@ class Actor(ABC):
         actor = cls(*args, **kwargs)
         actor._task_group = task_group
         actor._mailbox = Mailbox()
-        actor._pid = PID(_id=uuid.uuid4(), _mailbox=actor._mailbox)
+        actor._pid = PID(_id=uuid.uuid4())
         actor._cancel_scope = anyio.CancelScope()
+
+        # Register the PID -> Mailbox mapping in the global registry
+        register_pid_mailbox(actor._pid.id, actor._mailbox)
 
         cancelled_exc = anyio.get_cancelled_exc_class()
 
@@ -147,13 +151,15 @@ class Actor(ABC):
                         with anyio.CancelScope(shield=True):
                             try:
                                 # Always run actor cleanup
-                                    await actor.terminate(reason, state)
+                                await actor.terminate(reason, state)
                             finally:
-                                pass
+                                # Unregister the mailbox when actor terminates
+                                if actor._pid is not None:
+                                    unregister_pid_mailbox(actor._pid.id)
                             if on_exit is not None and actor._pid is not None:
                                 # Best-effort exit notification; never crash the task group.
                                 try:
-                                        await on_exit(actor._pid, reason)
+                                    await on_exit(actor._pid, reason)
                                 except Exception:
                                     pass
 

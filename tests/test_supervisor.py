@@ -18,11 +18,13 @@ from src.fauxtp import ANY, Actor, Mailbox, ReceiveTimeout, call, send
 from src.fauxtp.primitives.pid import PID
 from src.fauxtp.registry import Registry
 from src.fauxtp.supervisor import ChildSpec, RestartStrategy, Supervisor
+from src.fauxtp.router import register_pid_mailbox, unregister_pid_mailbox
 
 
 def _make_probe() -> tuple[Mailbox, PID]:
     mailbox = Mailbox()
-    pid = PID(_id=uuid.uuid4(), _mailbox=mailbox)
+    pid = PID(_id=uuid.uuid4())
+    register_pid_mailbox(pid.id, mailbox)
     return mailbox, pid
 
 
@@ -95,7 +97,7 @@ async def test_supervisor_starts_children_and_registers_names_in_registry():
         # Registry eventually contains both names.
         w1 = await _await_registry_pid(registry, "w1", timeout=1.0)
         w2 = await _await_registry_pid(registry, "w2", timeout=1.0)
-        assert w1._id != w2._id
+        assert w1.id != w2.id
 
         # Children did start (probe messages are observable).
         started = {
@@ -127,7 +129,7 @@ async def test_supervisor_one_for_one_restarts_crashed_child_and_updates_registr
         )
 
         old_pid = await _await_registry_pid(registry, "w1", timeout=1.0)
-        assert old_pid._id == started_pid._id
+        assert old_pid.id == started_pid.id
 
         # Crash it.
         await send(old_pid, ("boom",))
@@ -142,10 +144,10 @@ async def test_supervisor_one_for_one_restarts_crashed_child_and_updates_registr
             (("started", "w1", PID), lambda pid: pid),
             timeout=1.0,
         )
-        assert new_pid_from_probe._id != old_pid._id
+        assert new_pid_from_probe.id != old_pid.id
 
         new_pid_from_registry = await _await_registry_pid(registry, "w1", timeout=1.0)
-        assert new_pid_from_registry._id == new_pid_from_probe._id
+        assert new_pid_from_registry.id == new_pid_from_probe.id
 
         tg.cancel_scope.cancel()
 
@@ -208,9 +210,9 @@ async def test_supervisor_one_for_all_restarts_all_children_after_one_crashes():
 
         a1 = await _await_registry_pid(registry, "a", timeout=1.0)
         b1 = await _await_registry_pid(registry, "b", timeout=1.0)
-        assert a1._id != b1._id
-        assert initial_starts["a"]._id == a1._id
-        assert initial_starts["b"]._id == b1._id
+        assert a1.id != b1.id
+        assert initial_starts["a"].id == a1.id
+        assert initial_starts["b"].id == b1.id
 
         # Crash 'a' (should cancel 'b' and then restart both).
         await send(a1, ("boom",))
@@ -235,20 +237,20 @@ async def test_supervisor_one_for_all_restarts_all_children_after_one_crashes():
             )
             # Ignore any duplicate starts for the old pids (shouldn't happen after draining,
             # but keep this defensive).
-            if name == "a" and pid._id == a1._id:
+            if name == "a" and pid.id == a1.id:
                 continue
-            if name == "b" and pid._id == b1._id:
+            if name == "b" and pid.id == b1.id:
                 continue
             restarts[name] = pid
 
-        assert restarts["a"]._id != a1._id
-        assert restarts["b"]._id != b1._id
+        assert restarts["a"].id != a1.id
+        assert restarts["b"].id != b1.id
 
         # Registry should point at the restarted PIDs.
         a2 = await _await_registry_pid(registry, "a", timeout=1.0)
         b2 = await _await_registry_pid(registry, "b", timeout=1.0)
-        assert a2._id == restarts["a"]._id
-        assert b2._id == restarts["b"]._id
+        assert a2.id == restarts["a"].id
+        assert b2.id == restarts["b"].id
 
         tg.cancel_scope.cancel()
 
