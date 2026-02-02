@@ -151,7 +151,7 @@ class Actor(ABC):
                         with anyio.CancelScope(shield=True):
                             try:
                                 # Always run actor cleanup
-                                    await actor.terminate(reason, state)
+                                await actor.terminate(reason, state)
                             finally:
                                 # Unregister the mailbox when actor terminates
                                 if actor._pid is not None:
@@ -159,7 +159,7 @@ class Actor(ABC):
                             if on_exit is not None and actor._pid is not None:
                                 # Best-effort exit notification; never crash the task group.
                                 try:
-                                        await on_exit(actor._pid, reason)
+                                    await on_exit(actor._pid, reason)
                                 except Exception:
                                     pass
 
